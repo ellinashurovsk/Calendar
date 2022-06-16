@@ -4,7 +4,6 @@ from .serializers import MeetingSerializer
 import json
 from urllib import request
 
-from django.http import JsonResponse
 from django.contrib.auth.models import User
 
 from rest_framework.response import Response
@@ -18,7 +17,7 @@ from rest_framework.decorators import authentication_classes, permission_classes
 @permission_classes([])
 class NewUser(GenericAPIView):
     """
-    Create a new user.
+    POST:   Creates a new user.
 
     """
 
@@ -62,12 +61,14 @@ class NewUser(GenericAPIView):
                     'username': user.username
                 }
             }
-            return JsonResponse(data, status=201)
+            return Response(data, status=201)
 
 
 class SingleMeeting(GenericAPIView):
     """
-    Get meeting details.
+    GET:   Returns a meeting by it's id.
+
+    DELETE: Deletes a meeting by it's id.
 
     * Requires token authentication.
 
@@ -76,7 +77,8 @@ class SingleMeeting(GenericAPIView):
 
     def get(self, request, **kwargs):
 
-        in_owner_id = request.user.id  # get meeting details for the current user
+        # returns a meeting for the currently authenticated user
+        in_owner_id = request.user.id
 
         try:
             meeting = Meeting.objects.get(
@@ -98,31 +100,51 @@ class SingleMeeting(GenericAPIView):
             data = {
                 'success': False,
             }
-            return JsonResponse(data)
+            return Response(data)
+
+    def delete(self, request, **kwargs):
+
+        # deletes a meeting for the currently authenticated user
+        in_owner_id = request.user.id
+
+        try:
+            meeting = Meeting.objects.get(
+                pk=kwargs['in_pk'], owner_id=in_owner_id)
+            meeting.delete()
+
+            data = {
+                'success': True,
+            }
+            return Response(data)
+
+        except Meeting.DoesNotExist:
+            data = {
+                'success': False,
+            }
+            return Response(data)
 
 
 class Meetings(GenericAPIView):
     """
-    POST:
-          Create a new meeting.
+    POST:   Creates a new meeting.
 
-    GET:
-          Get meetings according the information provided.
+    GET:    Returns meetings according the date information provided.
 
-    |---------------|-----------------------------------------------------|-----------------------------------------------------------------------------|
-    | INFO PROVIDED |   DESCRIPTION                                       |  QUERY STRING EXAMPLE                                                       |
-    |---------------|-----------------------------------------------------|-----------------------------------------------------------------------------|
-    |       -       | - Return all the meetings for the current user      |  http://127.0.0.1:8000/meetings                                             |
-    |---------------|-----------------------------------------------------|-----------------------------------------------------------------------------|
-    |  start_date   | - Return meetings for the current user              |  http://127.0.0.1:8000/meetings?start_date=2022-05-28                       |
-    |               | from the start date.                                |                                                                             |
-    |---------------|-----------------------------------------------------|-----------------------------------------------------------------------------|
-    |  end_date     | - Return meetings for the current user              |  http://127.0.0.1:8000/meetings?end_date=2022-06-26                         |
-    |               | untill the end date.                                |                                                                             |
-    |---------------|-----------------------------------------------------|-----------------------------------------------------------------------------|
-    |  start_date,  | - Return meetings for the current user              |  http://127.0.0.1:8000/meetings?start_date=2022-05-28&end_date=2022-06-26   |
-    |  end_date     | for the period of time.                             |                                                                             |
-    |---------------|-----------------------------------------------------|-----------------------------------------------------------------------------|
+    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
+    | INFO PROVIDED |   DESCRIPTION                                |  QUERY STRING EXAMPLE                                                       |
+    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
+    |       -       | - Return   all  the   meetings   for   the   |  http://127.0.0.1:8000/meetings                                             |
+    |               | currently        authenticated       user.   |                                                                             |
+    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
+    |  start_date   | - Return  meetings   for   the   currently   |  http://127.0.0.1:8000/meetings?start_date=2022-05-28                       |
+    |               | authenticated  user  from  the start date.   |                                                                             |
+    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
+    |  end_date     | - Return   meetings   for   the  currently   |  http://127.0.0.1:8000/meetings?end_date=2022-06-26                         |
+    |               | authenticated  user  untill  the end date.   |                                                                             |
+    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
+    |  start_date,  | - Return   meetings   for   the  currently   |  http://127.0.0.1:8000/meetings?start_date=2022-05-28&end_date=2022-06-26   |
+    |  end_date     | authenticated user for the period of time.   |                                                                             |
+    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
 
     * Requires token authentication.
 
@@ -134,7 +156,8 @@ class Meetings(GenericAPIView):
     def post(self, request):
         post_body = json.loads(request.body)
 
-        in_owner_id = request.user.id  # create a new meeting for the current user
+        # creates a new meeting for the currently authenticated user
+        in_owner_id = request.user.id
         in_name = post_body.get('name')
         in_date = post_body.get('date')
         in_participants = post_body.get('participants')
@@ -154,11 +177,12 @@ class Meetings(GenericAPIView):
                 'date': instance.date
             }
         }
-        return JsonResponse(data, status=201)
+        return Response(data, status=201)
 
     def get(self, request):
 
-        in_owner_id = request.user.id  # get meetings for the current user
+        # returns meetings for the currently authenticated user
+        in_owner_id = request.user.id
         in_data = {}
 
         if 'start_date' in request.GET:
@@ -188,4 +212,4 @@ class Meetings(GenericAPIView):
                 'success': False,
             }
 
-        return JsonResponse(data)
+        return Response(data)

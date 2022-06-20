@@ -9,17 +9,20 @@ from django.contrib.auth.models import User
 from rest_framework.response import Response
 from rest_framework.generics import GenericAPIView
 
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import authentication_classes, permission_classes
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 
-@authentication_classes([])
-@permission_classes([])
 class NewUser(GenericAPIView):
     """
     POST:   Creates a new user.
 
+    * Doesn't require token authentication.
+    * Everyone is able to access this view.
     """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def post(self, request):
         post_body = json.loads(request.body)
@@ -71,9 +74,13 @@ class SingleMeeting(GenericAPIView):
     DELETE: Deletes a meeting by it's id.
 
     * Requires token authentication.
+    * Only authenticated users are able to access this view.
 
     """
-    permission_classes = (IsAuthenticated,)
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    serializer_class = MeetingSerializer
 
     def get(self, request, **kwargs):
 
@@ -92,6 +99,7 @@ class SingleMeeting(GenericAPIView):
                     'owner_id': meeting_serial.data['owner'],
                     'name': meeting_serial.data['meeting_name'],
                     'date': meeting_serial.data['date'],
+                    'participants': meeting_serial.data['participants']
                 }
             }
             return Response(data)
@@ -101,6 +109,38 @@ class SingleMeeting(GenericAPIView):
                 'success': False,
             }
             return Response(data)
+
+    def patch(self, request, *args, **kwargs):
+        # updates a meeting for the currently authenticated user
+        in_owner_id = request.user.id
+
+        meeting = Meeting.objects.get(
+            pk=kwargs['in_pk'], owner_id=in_owner_id)
+
+        data = request.data
+
+        meeting.meeting_name = data.get("meeting_name", meeting.meeting_name)
+        meeting.date = data.get("date", meeting.date)
+
+        if "participants" in data:
+            ids = data.get("participants", [])
+            users = User.objects.filter(pk__in=ids)
+            meeting.participants.set(users)
+
+        meeting.save()
+        meeting_serial = MeetingSerializer(meeting)
+
+        data = {
+            'success': True,
+            'payload': {
+                'id': meeting_serial.data['id'],
+                'owner_id': meeting_serial.data['owner'],
+                'name': meeting_serial.data['meeting_name'],
+                'date': meeting_serial.data['date'],
+                'participants': meeting_serial.data['participants']
+            }
+        }
+        return Response(data)
 
     def delete(self, request, **kwargs):
 
@@ -147,10 +187,12 @@ class Meetings(GenericAPIView):
     |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
 
     * Requires token authentication.
+    * Only authenticated users are able to access this view.
 
     """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    permission_classes = (IsAuthenticated,)
     serializer_class = MeetingSerializer
 
     def post(self, request):

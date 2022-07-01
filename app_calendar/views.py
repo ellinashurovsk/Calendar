@@ -1,257 +1,60 @@
-from django.shortcuts import render
 from .models import Meeting
 from .serializers import MeetingSerializer
-import json
-from urllib import request
+from .permissions import IsOwnerOrReadOnly
 
-from django.contrib.auth.models import User
-
+from rest_framework import viewsets
 from rest_framework.response import Response
-from rest_framework.generics import GenericAPIView
-
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.permissions import IsAuthenticated, AllowAny
+
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 
 
-class NewUser(GenericAPIView):
-    """
-    POST:   Creates a new user.
-
-    * Doesn't require token authentication.
-    * Everyone is able to access this view.
-    """
-
-    authentication_classes = []
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        post_body = json.loads(request.body)
-
-        in_username = post_body.get('username')
-        in_password = post_body.get('password')
-
-        extra_user_data = {}
-        if 'first_name' in post_body:
-            in_first_name = post_body.get('first_name')
-            extra_user_data['first_name'] = in_first_name
-
-        if 'last_name' in post_body:
-            in_last_name = post_body.get('last_name')
-            extra_user_data['last_name'] = in_last_name
-
-        if 'email' in post_body:
-            in_email = post_body.get('email')
-            extra_user_data['email'] = in_email
-
-        try:
-            user = User.objects.get(username=in_username)
-
-            data = {
-                'success': False,
-                'details': 'Username already exists.'
-            }
-            return Response(data)
-
-        except User.DoesNotExist:
-
-            user = User.objects.create_user(
-                username=in_username, password=in_password, **extra_user_data)
-
-            data = {
-                'success': True,
-                'payload': {
-                    'id': user.id,
-                    'username': user.username
-                }
-            }
-            return Response(data, status=201)
+start_date = openapi.Parameter(
+    name='start_date', description='Start date of the date range', in_=openapi.IN_QUERY, type=openapi.FORMAT_DATE)
+end_date = openapi.Parameter(
+    name='end_date', description='End date of the date range', in_=openapi.IN_QUERY, type=openapi.FORMAT_DATE)
 
 
-class SingleMeeting(GenericAPIView):
-    """
-    GET:   Returns a meeting by it's id.
+class MeetingsViewSet(viewsets.ModelViewSet):
 
-    DELETE: Deletes a meeting by it's id.
-
-    * Requires token authentication.
-    * Only authenticated users are able to access this view.
-
-    """
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
+    model = Meeting
     serializer_class = MeetingSerializer
-
-    def get(self, request, **kwargs):
-
-        # returns a meeting for the currently authenticated user
-        in_owner_id = request.user.id
-
-        try:
-            meeting = Meeting.objects.get(
-                pk=kwargs['in_pk'], owner_id=in_owner_id)
-            meeting_serial = MeetingSerializer(meeting)
-
-            data = {
-                'success': True,
-                'payload': {
-                    'id': meeting_serial.data['id'],
-                    'owner_id': meeting_serial.data['owner'],
-                    'name': meeting_serial.data['meeting_name'],
-                    'date': meeting_serial.data['date'],
-                    'participants': meeting_serial.data['participants']
-                }
-            }
-            return Response(data)
-
-        except Meeting.DoesNotExist:
-            data = {
-                'success': False,
-            }
-            return Response(data)
-
-    def patch(self, request, *args, **kwargs):
-        # updates a meeting for the currently authenticated user
-        in_owner_id = request.user.id
-
-        meeting = Meeting.objects.get(
-            pk=kwargs['in_pk'], owner_id=in_owner_id)
-
-        data = request.data
-
-        meeting.meeting_name = data.get("meeting_name", meeting.meeting_name)
-        meeting.date = data.get("date", meeting.date)
-
-        if "participants" in data:
-            ids = data.get("participants", [])
-            users = User.objects.filter(pk__in=ids)
-            meeting.participants.set(users)
-
-        meeting.save()
-        meeting_serial = MeetingSerializer(meeting)
-
-        data = {
-            'success': True,
-            'payload': {
-                'id': meeting_serial.data['id'],
-                'owner_id': meeting_serial.data['owner'],
-                'name': meeting_serial.data['meeting_name'],
-                'date': meeting_serial.data['date'],
-                'participants': meeting_serial.data['participants']
-            }
-        }
-        return Response(data)
-
-    def delete(self, request, **kwargs):
-
-        # deletes a meeting for the currently authenticated user
-        in_owner_id = request.user.id
-
-        try:
-            meeting = Meeting.objects.get(
-                pk=kwargs['in_pk'], owner_id=in_owner_id)
-            meeting.delete()
-
-            data = {
-                'success': True,
-            }
-            return Response(data)
-
-        except Meeting.DoesNotExist:
-            data = {
-                'success': False,
-            }
-            return Response(data)
-
-
-class Meetings(GenericAPIView):
-    """
-    POST:   Creates a new meeting.
-
-    GET:    Returns meetings according the date information provided.
-
-    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
-    | INFO PROVIDED |   DESCRIPTION                                |  QUERY STRING EXAMPLE                                                       |
-    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
-    |       -       | - Return   all  the   meetings   for   the   |  http://127.0.0.1:8000/meetings                                             |
-    |               | currently        authenticated       user.   |                                                                             |
-    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
-    |  start_date   | - Return  meetings   for   the   currently   |  http://127.0.0.1:8000/meetings?start_date=2022-05-28                       |
-    |               | authenticated  user  from  the start date.   |                                                                             |
-    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
-    |  end_date     | - Return   meetings   for   the  currently   |  http://127.0.0.1:8000/meetings?end_date=2022-06-26                         |
-    |               | authenticated  user  untill  the end date.   |                                                                             |
-    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
-    |  start_date,  | - Return   meetings   for   the  currently   |  http://127.0.0.1:8000/meetings?start_date=2022-05-28&end_date=2022-06-26   |
-    |  end_date     | authenticated user for the period of time.   |                                                                             |
-    |---------------|----------------------------------------------|-----------------------------------------------------------------------------|
-
-    * Requires token authentication.
-    * Only authenticated users are able to access this view.
-
-    """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
-    serializer_class = MeetingSerializer
+    def get_queryset(self):
+        """
+        Optionally restricts the returned meetings to the currently authenticated user,
+        by filtering against a 'start_date' and 'end_date' query parameter in the URL.
+        """
+        queryset = Meeting.objects.filter(owner=self.request.user)
 
-    def post(self, request):
-        post_body = json.loads(request.body)
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
 
-        # creates a new meeting for the currently authenticated user
-        in_owner_id = request.user.id
-        in_name = post_body.get('name')
-        in_date = post_body.get('date')
-        in_participants = post_body.get('participants')
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
 
-        users = User.objects.filter(username=in_participants)
-        instance = Meeting.objects.create(
-            owner_id=in_owner_id, meeting_name=in_name, date=in_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
 
-        instance.participants.set(users)
+        return queryset
 
-        data = {
-            'success': True,
-            'payload': {
-                'id': instance.id,
-                'owner_id': instance.owner_id,
-                'name': instance.meeting_name.title(),
-                'date': instance.date
-            }
-        }
-        return Response(data, status=201)
+    def create(self, request):
+        # Create a new post for the currently authenticated user.
 
-    def get(self, request):
+        serializer = MeetingSerializer(data=request.data)
+        serializer.is_valid()
+        serializer.save(owner=request.user)
 
-        # returns meetings for the currently authenticated user
-        in_owner_id = request.user.id
-        in_data = {}
+        return Response(serializer.data, status=201)
 
-        if 'start_date' in request.GET:
-            in_data['date__gte'] = request.GET['start_date']
+    @swagger_auto_schema(operation_description="Return a list of the meetings for the currently authenticated user. Optionally restricts the returned meetings, by filtering against a 'start_date' and 'end_date' query parameter in the URL.", manual_parameters=[start_date, end_date],)
+    def list(self, request, *args, **kwargs):
+        # Return a list of the meetings for the currently authenticated user.
 
-        if 'end_date' in request.GET:
-            in_data['date__lte'] = request.GET['end_date']
-
-        meetings = Meeting.objects.filter(owner_id=in_owner_id)
-        meetings = meetings.filter(**in_data)
-
-        meetings_serial = MeetingSerializer(meetings, many=True)
-
-        data = {}
-        if meetings_serial.data:
-            data['success'] = True
-            data['payload'] = []
-            for i in range(len(meetings_serial.data)):
-                dct = {}
-                dct['id'] = meetings_serial.data[i]['id']
-                dct['owner_id'] = meetings_serial.data[i]['owner']
-                dct['name'] = meetings_serial.data[i]['meeting_name']
-                dct['date'] = meetings_serial.data[i]['date']
-                data['payload'].append(dct)
-        else:
-            data = {
-                'success': False,
-            }
-
-        return Response(data)
+        queryset = self.get_queryset()
+        serializer = MeetingSerializer(queryset, many=True)
+        return Response(serializer.data)

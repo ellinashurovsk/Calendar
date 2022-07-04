@@ -4,7 +4,7 @@ from .permissions import IsOwnerOrReadOnly
 
 from rest_framework import viewsets
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from drf_yasg import openapi
@@ -22,7 +22,7 @@ class MeetingsViewSet(viewsets.ModelViewSet):
     model = Meeting
     serializer_class = MeetingSerializer
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
 
     def get_queryset(self):
         """

@@ -10,7 +10,7 @@ from .serializers import (
 from rest_framework.permissions import (
     IsAdminUser,
     AllowAny,
-    IsAuthenticatedOrReadOnly
+    IsAuthenticated
 )
 from rest_framework.generics import (
     ListAPIView,
@@ -69,8 +69,7 @@ class UserAPIReadUpdateDelete(RetrieveUpdateDestroyAPIView):
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
     lookup_field = "id"
 
 
